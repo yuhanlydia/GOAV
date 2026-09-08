@@ -1,0 +1,17 @@
+name: deepseek-frozen-transfer
+stage: frozen
+profile: 16gb
+formal: false
+model:
+  name: cross_family
+  revision: e5d64addd26a6a1db0f9b863abf6ee3141936807
+  quantization: nf4
+benchmark:
+  name: bigcodebench_hard
+  revision: b74c0d0bf70d2c0bc459be537895cca163007f1a
+  digest: sha256:225a3a811ee5b5e0d6802b76ef0a0f51bfb24315f5edff66ffafb594528726b3
+baselines: [uniform_aipw, goav_joint_aipw]
+seeds: [19]
+expected_audit_fraction: 0.1
+candidate_count: 8
+ablations: [oracle_covariance]

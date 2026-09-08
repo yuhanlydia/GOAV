@@ -1,0 +1,5 @@
+name: evalplus
+source: evalplus/evalplus
+revision: 26d6d00bb1fd0fa37f39c99d5290da67891d1c5e
+digest: sha256:65ef2983e89bd9ef75e17a75e5a75cfd71302d9d3b3ca2d5f85676db47653261
+role: public mechanism replication

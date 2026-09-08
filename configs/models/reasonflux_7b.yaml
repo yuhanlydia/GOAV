@@ -1,0 +1,5 @@
+name: reasonflux_7b
+hf_id: Gen-Verse/ReasonFlux-Coder-7B
+revision: 6860a2fd222bd2e18e8a5b62a9c0887d2ba70c36
+license: apache-2.0
+role: learned-test control only

@@ -1,0 +1,32 @@
+name: qwen3-architecture-replication
+stage: frozen
+profile: h200_formal
+formal: true
+formal_activation: pending
+model:
+  name: architecture_replication
+  revision: b968826d9c46dd6066d109eabc6255188de91218
+benchmark:
+  name: livecodebench_v6
+  revision: 0fe84c3912ea0c4d4a78037083943e8f0c4dd505
+  digest: sha256:7709182830687e4c9f7236220df0fef9cd97de3e979152c6c59148d7fe381e58
+baselines: [noise_corrected_grpo, goav_joint_aipw]
+seeds: [41, 43, 47]
+expected_audit_fraction: 0.1
+candidate_count: 8
+bootstrap_replicates: 10000
+bank_manifest_hash: unresolved
+gates:
+  fixed_pool_required: true
+  nmse_reduction_min: 0.1
+  ess_min: 0.3
+  standardized_bias_max: 0.25
+  familywise_alpha: 0.05
+  phase: phase_a_frozen
+gate_spec_hash: sha256:17c6b9c87625df40b4a0f0a11051a1b3cfeb0246a3d55cd913da36165f7ad069
+registered_config_hash: unresolved
+abort:
+  peak_memory_fraction: 0.9
+  infrastructure_failure_fraction: 0.01
+  cost_overrun_fraction: 0.25
+ablations: [candidate_permutation]

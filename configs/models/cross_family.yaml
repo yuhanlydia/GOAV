@@ -1,0 +1,5 @@
+name: cross_family
+hf_id: deepseek-ai/deepseek-coder-6.7b-instruct
+revision: e5d64addd26a6a1db0f9b863abf6ee3141936807
+license: deepseek
+role: frozen transfer

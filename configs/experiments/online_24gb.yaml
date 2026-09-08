@@ -1,0 +1,22 @@
+name: qwen25-coder-online-qlora-pilot
+stage: online
+profile: 24gb
+formal: false
+model:
+  name: primary
+  revision: c03e6d358207e414f1eca0bb1891e29f1db0e242
+  quantization: nf4
+  lora_rank: 16
+  microbatch: 1
+  accumulation: 32
+benchmark:
+  name: taco_codecontests
+  revision: d593ed0a2becbbc952230bb89be09189bf1056dc
+  digest: sha256:db207945d6623311dc75e1f2db90b71f1ad52e380e2daa120ab90c903e9683be
+baselines: [noise_corrected_grpo, goav_joint_aipw]
+seeds: [13]
+expected_audit_fraction: 0.1
+candidate_count: 8
+prompt_batch: 32
+updates: 40
+ablations: [sketch_size, audit_budget]

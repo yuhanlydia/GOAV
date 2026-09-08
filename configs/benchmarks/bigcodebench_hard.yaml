@@ -1,0 +1,5 @@
+name: bigcodebench_hard
+source: bigcode/bigcodebench hard instruct
+revision: b74c0d0bf70d2c0bc459be537895cca163007f1a
+digest: sha256:225a3a811ee5b5e0d6802b76ef0a0f51bfb24315f5edff66ffafb594528726b3
+role: public practical and API cross-domain evaluation

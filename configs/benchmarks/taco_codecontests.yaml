@@ -1,0 +1,5 @@
+name: taco_codecontests
+source: BAAI/TACO plus CodeContests
+revision: d593ed0a2becbbc952230bb89be09189bf1056dc
+digest: sha256:db207945d6623311dc75e1f2db90b71f1ad52e380e2daa120ab90c903e9683be
+role: online train and development

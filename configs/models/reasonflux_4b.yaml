@@ -1,0 +1,5 @@
+name: reasonflux_4b
+hf_id: Gen-Verse/ReasonFlux-Coder-4B
+revision: 878e77d3f7f2b0a24c18b2bd59862b53467a101c
+license: apache-2.0
+role: learned-test control only

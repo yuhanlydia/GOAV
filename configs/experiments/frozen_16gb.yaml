@@ -1,0 +1,18 @@
+name: qwen25-coder-frozen-bank-pilot
+stage: frozen
+profile: 16gb
+formal: false
+model:
+  name: primary
+  revision: c03e6d358207e414f1eca0bb1891e29f1db0e242
+  quantization: nf4
+benchmark:
+  name: codecontests_o
+  revision: d38c573f2a15dd51a5102ebdacfd3c81a82327d0
+  digest: sha256:02dfe8b76db67f29ef913805f401e4c684bb2dc7b820be1abe214736cb28947d
+baselines: [uniform_ht, uniform_aipw, entropy_aipw, coverage_kill_aipw, factorized_neyman_aipw, bayes_voi_aipw, goav_joint_aipw]
+seeds: [11]
+expected_audit_fraction: 0.1
+candidate_count: 8
+test_composition: {curated: 12, generated: 12, fault_targeted: 12, metamorphic: 8, control: 4}
+ablations: [cheap_test_count, candidate_permutation]

@@ -1,0 +1,76 @@
+name: qwen25-coder-online-formal
+stage: online
+profile: h200_formal
+formal: true
+formal_activation: pending
+model:
+  name: primary
+  revision: c03e6d358207e414f1eca0bb1891e29f1db0e242
+  precision: bf16
+  lora_rank: 32
+  lora_alpha: 64
+benchmark:
+  name: taco_codecontests
+  revision: d593ed0a2becbbc952230bb89be09189bf1056dc
+  digest: sha256:db207945d6623311dc75e1f2db90b71f1ad52e380e2daa120ab90c903e9683be
+baselines:
+  - cheap_only
+  - uniform_ht
+  - uniform_aipw
+  - entropy_aipw
+  - coverage_kill_aipw
+  - factorized_neyman_aipw
+  - bayes_voi_aipw
+  - noise_corrected_grpo
+  - noise_contrastive_grpo
+  - goav_joint_aipw
+  - oracle_covariance_goav
+  - full_audit
+  - top_k
+  - grpo
+  - dr_grpo
+  - vpo
+  - b4
+  - codet
+  - cure
+  - utrl_4b
+  - cosplay
+seeds: [41, 43, 47]
+expected_audit_fraction: 0.1
+candidate_count: 8
+prompt_batch: 64
+updates: 1000
+bootstrap_replicates: 10000
+bank_manifest_hash: unresolved
+gates:
+  fixed_pool_required: true
+  phase_a_fixed_pool_required: true
+  nmse_reduction_min: 0.1
+  ess_min: 0.3
+  standardized_bias_max: 0.25
+  familywise_alpha: 0.05
+  phase: phase_b_online
+gate_spec_hash: sha256:8a869f8d69a01847c34069a0d6e1e07a924037696e185dee08012b152d7f5ea3
+registered_config_hash: unresolved
+abort:
+  peak_memory_fraction: 0.9
+  infrastructure_failure_fraction: 0.01
+  cost_overrun_fraction: 0.25
+budget_fractions: [0.05, 0.1, 0.2, 0.4, 1.0]
+ablations:
+  - remove_gradient_influence
+  - diagonal_covariance
+  - independent_bernoulli
+  - factorized_poisson
+  - amortized_policy
+  - oracle_covariance
+  - imputation_ht_aipw
+  - propensity_perturbation
+  - sketch_size
+  - candidate_count
+  - audit_budget
+  - inclusion_floor
+  - cheap_test_count
+  - anchor_corruption
+  - candidate_permutation
+  - identity_fisher_optimizer_metric

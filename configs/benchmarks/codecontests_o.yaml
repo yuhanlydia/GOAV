@@ -1,0 +1,5 @@
+name: codecontests_o
+source: CodeContests-O
+revision: d38c573f2a15dd51a5102ebdacfd3c81a82327d0
+digest: sha256:02dfe8b76db67f29ef913805f401e4c684bb2dc7b820be1abe214736cb28947d
+role: problem-disjoint fixed-policy bank

@@ -1,0 +1,5 @@
+name: held_out
+source: evaluator-held post-freeze suite
+revision: b1dfb93c6c39f1dbe6223d5b30f67ac9cc0ffbf1
+digest: sha256:fa789e55608335f58dd5aef117ad23aacbf1151742ab82d84df28db3155d0e8f
+role: one-shot locked final evidence

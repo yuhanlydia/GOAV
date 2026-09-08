@@ -1,0 +1,5 @@
+name: synthetic
+source: builtin-correlated-oracle-panel
+revision: 3ebfe4fa36f84656bc3f2e7f493669f365f61323
+digest: sha256:6d37dc7fe0f26671a9a8929336ee8ab701b1a3c5b14fd7570ea278ddfe09e486
+role: exact design identification

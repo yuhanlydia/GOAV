@@ -1,0 +1,5 @@
+name: utrl_control
+hf_id: dgjun32/UTRL-4B
+revision: db43d7002f548833529dc611e8ccda683dece5f5
+license: upstream-unspecified
+role: learned-test control only

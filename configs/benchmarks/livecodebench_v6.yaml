@@ -1,0 +1,5 @@
+name: livecodebench_v6
+source: livecodebench/code_generation_lite v6
+revision: 0fe84c3912ea0c4d4a78037083943e8f0c4dd505
+digest: sha256:7709182830687e4c9f7236220df0fef9cd97de3e979152c6c59148d7fe381e58
+role: public evaluation with strict date slice

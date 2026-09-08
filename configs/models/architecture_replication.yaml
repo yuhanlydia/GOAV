@@ -1,0 +1,5 @@
+name: architecture_replication
+hf_id: Qwen/Qwen3-8B
+revision: b968826d9c46dd6066d109eabc6255188de91218
+license: apache-2.0
+role: strongest-arm architecture replication
