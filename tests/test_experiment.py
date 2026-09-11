@@ -8,6 +8,7 @@ from goav.bank import CandidateGroup, CheapTest, TrustedSidecar
 from goav.artifacts import ArtifactStore
 from goav.benchmarks import JsonlBenchmark, load_evalplus
 from goav.experiment import _clustered_standard_error, run_frozen_bank, run_online, synthetic_correlated_panel
+from goav.crossfit import CrossfitPredictions
 from goav.models import DeterministicPolicyBackend
 from goav.statistics import hierarchical_bootstrap, holm_adjust, paired_hierarchical_bootstrap, paired_hierarchical_randomization_pvalue
 
@@ -115,6 +116,29 @@ def test_streamed_cluster_bias_matches_prechange_reference(tmp_path):
     assert arm.standardized_bias == pytest.approx(0.8866277071256814)
     assert arm.gradient_nmse == pytest.approx(18.2228736219711)
     assert arm.mean_cosine == pytest.approx(0.5911561893722879)
+
+
+def test_frozen_runner_connects_crossfit_outcome_model_before_designs(tmp_path, monkeypatch):
+    groups = _groups()
+    sidecar = TrustedSidecar.create({group.split_group: np.arange(8) % 2 for group in groups})
+    calls = []
+
+    def fake_crossfit(features, labels, fold_groups, *, n_folds=5, maxiter=100):
+        calls.append((features.shape, labels.shape, tuple(fold_groups), n_folds))
+        means = np.full(labels.shape, 0.5)
+        covariance = np.full((len(labels), labels.shape[1], labels.shape[1]), 0.04)
+        for row in covariance:
+            np.fill_diagonal(row, 0.24)
+        return CrossfitPredictions(means, covariance, ())
+
+    monkeypatch.setattr("goav.experiment.crossfit_predictions", fake_crossfit)
+    result = run_frozen_bank(
+        groups, sidecar, InspectingBackend(), ["goav_joint_aipw"],
+        expected_budget=0.8, inclusion_floor=0.05, seed=3,
+        event_directory=tmp_path, design_draws=2, outcome_model="crossfit",
+    )
+    assert result.arms[0].design_events == 2 * len(groups)
+    assert calls and calls[0][0][0] == len(groups) and calls[0][1] == (len(groups), 8)
 
 
 def test_gate_uses_only_unbiased_adaptive_controls_and_bias_uses_cluster_mc_se(tmp_path):

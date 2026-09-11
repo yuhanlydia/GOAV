@@ -6,7 +6,7 @@ import numpy as np
 from goav.crossfit import crossfit_predictions
 from goav.ising import enumerate_binary, ising_moments
 from goav.metrics import brier_score, covariance_rmse, expected_calibration_error, joint_nll
-from goav.outcomes import fit_fold
+from goav.outcomes import _objective_and_gradient, fit_fold
 
 
 def test_exact_ising_partition_mean_and_covariance_match_hand_enumeration():
@@ -43,6 +43,21 @@ def test_candidate_permutation_equivariance_for_exact_and_fitted_model():
     permuted = model.predict_moments(features[:1, permutation])[0]
     np.testing.assert_allclose(permuted.mean, original.mean[permutation], atol=1e-7)
     np.testing.assert_allclose(permuted.covariance, original.covariance[np.ix_(permutation, permutation)], atol=1e-7)
+
+
+def test_ising_fit_analytic_gradient_matches_finite_difference():
+    rng = np.random.default_rng(17)
+    features = rng.normal(size=(3, 4, 2))
+    labels = (rng.random((3, 4)) > 0.5).astype(float)
+    parameters = rng.normal(size=features.shape[2] + 2)
+    value, gradient = _objective_and_gradient(parameters, features, labels)
+    epsilon = 1e-6
+    numerical = np.empty_like(parameters)
+    for index in range(len(parameters)):
+        plus = parameters.copy(); plus[index] += epsilon
+        minus = parameters.copy(); minus[index] -= epsilon
+        numerical[index] = (_objective_and_gradient(plus, features, labels)[0] - _objective_and_gradient(minus, features, labels)[0]) / (2 * epsilon)
+    np.testing.assert_allclose(gradient, numerical, rtol=1e-5, atol=1e-6)
 
 
 def test_crossfit_never_shares_problem_checkpoint_groups():

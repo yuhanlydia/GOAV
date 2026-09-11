@@ -81,6 +81,7 @@ class AuditEventLog:
         self._outcomes: set[str] = set()
         self._counts = (0, 0)
         self._signature: tuple[int, int] | None = None
+        self._stream = None
 
     def _file_signature(self) -> tuple[int, int] | None:
         if not self.path.exists():
@@ -115,9 +116,28 @@ class AuditEventLog:
     def _write(self, kind: str, event: AuditDesignEvent | AuditOutcomeEvent) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"event_type": kind, **asdict(event)}
-        with self.path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+        if self._stream is None:
+            self._stream = self.path.open("a", encoding="utf-8")
+        self._stream.write(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+        self._stream.flush()
         self._signature = self._file_signature()
+
+    def close(self) -> None:
+        if self._stream is not None:
+            self._stream.close()
+            self._stream = None
+
+    def __enter__(self) -> "AuditEventLog":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def append_design(self, event: AuditDesignEvent) -> None:
         self._ensure_loaded()
@@ -165,6 +185,8 @@ class AuditEventLog:
         self._counts = self._counts[0], self._counts[1] + 1
 
     def read(self) -> list[AuditDesignEvent | AuditOutcomeEvent]:
+        if self._stream is not None:
+            self._stream.flush()
         events = self._read_file()
         self._index(events)
         self._signature = self._file_signature()

@@ -16,3 +16,6 @@ expected_audit_fraction: 0.1
 candidate_count: 8
 test_composition: {curated: 12, generated: 12, fault_targeted: 12, metamorphic: 8, control: 4}
 ablations: [cheap_test_count, candidate_permutation]
+execution:
+  outcome_model: crossfit
+  design_draws: 200

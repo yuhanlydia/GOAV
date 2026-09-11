@@ -45,6 +45,7 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--bank-npz")
     run.add_argument("--trusted-sidecar")
     run.add_argument("--backend", choices=("deterministic", "transformers"))
+    run.add_argument("--outcome-model", choices=("plugin", "crossfit"))
     run.add_argument("--registration-root")
     online = sub.add_parser("online-update", help="execute one verified causal-LM optimizer update")
     online.add_argument("config")
@@ -103,8 +104,10 @@ def main(argv: list[str] | None = None) -> int:
             status = "deterministic_fake_smoke_only"
         else:
             raise ValueError("real frozen execution requires a prepared bank JSONL/NPZ and trusted sidecar")
-        result = run_frozen_bank(groups, sidecar, backend, config.baselines, expected_budget=8 * config.expected_audit_fraction, inclusion_floor=0.02, seed=config.seeds[0], event_directory=output / "events", design_draws=int(execution.get("design_draws", 1)), statistics_replicates=int(config.raw.get("bootstrap_replicates", 1_000)))
-        ArtifactStore(output).write_json("result.json", {"status": status, "config_hash": config.config_hash, "result": asdict(result)})
+        default_outcome_model = "crossfit" if all(prepared_arguments) and args.backend == "transformers" else "plugin"
+        outcome_model = args.outcome_model or execution.get("outcome_model", default_outcome_model)
+        result = run_frozen_bank(groups, sidecar, backend, config.baselines, expected_budget=8 * config.expected_audit_fraction, inclusion_floor=0.02, seed=config.seeds[0], event_directory=output / "events", design_draws=int(execution.get("design_draws", 1)), statistics_replicates=int(config.raw.get("bootstrap_replicates", 1_000)), outcome_model=outcome_model)
+        ArtifactStore(output).write_json("result.json", {"status": status, "outcome_model": outcome_model, "config_hash": config.config_hash, "result": asdict(result)})
         write_checksum_index(output, config_hash=config.config_hash, bank_hash=result.bank_hash)
         print(json.dumps({"completed": True, "status": status, "output": str(output.resolve())}, sort_keys=True))
         return 0

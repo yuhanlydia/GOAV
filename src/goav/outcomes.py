@@ -39,21 +39,64 @@ def fit_fold(features: np.ndarray, labels: np.ndarray, *, maxiter: int = 100) ->
     if x.shape[1] > 16 or not np.isin(y, [0.0, 1.0]).all():
         raise ValueError("exact fitting requires binary labels and K at most 16")
 
-    def objective(parameters: np.ndarray) -> float:
-        model = ExactIsingOutcomeModel(float(parameters[0]), parameters[1:-1], float(parameters[-1]))
-        total = 0.0
-        for row, target in zip(x, y, strict=True):
-            unary, pairwise = model._parameters(row)
-            moments = ising_moments(unary, pairwise)
-            energy = target @ unary + 0.5 * target @ pairwise @ target
-            total += moments.log_partition - float(energy)
-        return total / len(x) + 1e-5 * float(parameters @ parameters)
-
     initial = np.zeros(x.shape[2] + 2, dtype=float)
-    fitted = minimize(objective, initial, method="L-BFGS-B", options={"maxiter": int(maxiter), "ftol": 1e-9})
+    fitted = minimize(
+        lambda parameters: _objective_and_gradient(parameters, x, y),
+        initial,
+        jac=True,
+        method="L-BFGS-B",
+        options={"maxiter": int(maxiter), "ftol": 1e-9},
+    )
     if not np.isfinite(fitted.fun):
         raise RuntimeError("joint outcome fit produced a non-finite objective")
     return ExactIsingOutcomeModel(float(fitted.x[0]), fitted.x[1:-1].copy(), float(fitted.x[-1]))
+
+
+def _objective_and_gradient(
+    parameters: np.ndarray, features: np.ndarray, labels: np.ndarray
+) -> tuple[float, np.ndarray]:
+    """Return the exact Ising negative log-likelihood and its analytic gradient.
+
+    The old implementation left the gradient to scipy's finite-difference
+    fallback.  Every objective evaluation enumerates all binary states, so
+    finite differences multiplied that cost by the parameter dimension.  The
+    sufficient-statistic identity ``d log Z / d theta = E[T]`` gives the
+    gradient in one enumeration per training row.
+    """
+    parameters = np.asarray(parameters, dtype=float)
+    x = np.asarray(features, dtype=float)
+    y = np.asarray(labels, dtype=float)
+    if x.ndim != 3 or y.shape != x.shape[:2]:
+        raise ValueError("features/labels shapes do not align")
+    if parameters.shape != (x.shape[2] + 2,):
+        raise ValueError("parameters do not match feature dimension")
+
+    intercept = float(parameters[0])
+    weights = parameters[1:-1]
+    interaction = float(parameters[-1])
+    pair_mask = np.ones((x.shape[1], x.shape[1]), dtype=float)
+    np.fill_diagonal(pair_mask, 0.0)
+    total = 0.0
+    gradient = np.zeros_like(parameters)
+    for row, target in zip(x, y, strict=True):
+        unary = intercept + row @ weights
+        pairwise = interaction * pair_mask
+        moments = ising_moments(unary, pairwise)
+        energy = target @ unary + 0.5 * target @ pairwise @ target
+        total += moments.log_partition - float(energy)
+
+        residual = moments.mean - target
+        gradient[0] += float(residual.sum())
+        gradient[1:-1] += row.T @ residual
+        expected_pair = moments.covariance + np.outer(moments.mean, moments.mean)
+        observed_pair = np.outer(target, target)
+        gradient[-1] += 0.5 * float(np.sum(pair_mask * (expected_pair - observed_pair)))
+
+    normalizer = float(len(x))
+    value = total / normalizer + 1e-5 * float(parameters @ parameters)
+    gradient /= normalizer
+    gradient += 2e-5 * parameters
+    return float(value), gradient
 
 
 def build_torch_joint_model(feature_dim: int):

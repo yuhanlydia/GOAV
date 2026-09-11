@@ -12,6 +12,7 @@ import numpy as np
 from .audit import run_design_audit
 from .bank import CandidateGroup, CheapTest, TrustedSidecar, bank_hash, trainer_view
 from .baselines import build_design
+from .crossfit import crossfit_predictions
 from .design import design_risk
 from .estimators import aipw_labels, clean_gradient, ht_labels
 from .events import AuditDesignEvent, AuditEventLog, AuditOutcomeEvent
@@ -96,6 +97,44 @@ def _cosine(left: np.ndarray, right: np.ndarray) -> float:
     return float(left @ right / denominator) if denominator > 0 else float(left.shape == right.shape and np.allclose(left, right))
 
 
+def _crossfit_outcome_inputs(groups: Sequence[CandidateGroup], analyses: Sequence[object]) -> np.ndarray:
+    """Build permutation-equivariant cheap-test/geometry features for cross-fitting."""
+    rows = []
+    kinds = ("curated", "generated", "fault_targeted", "metamorphic", "control")
+    for group, analysis in zip(groups, analyses, strict=True):
+        cheap = np.asarray(group.cheap_outcomes, dtype=float)
+        kind_features = np.stack([
+            cheap[:, [index for index, test in enumerate(group.tests) if test.kind == kind]].mean(axis=1)
+            for kind in kinds
+        ], axis=1)
+        geometry_norm = np.log1p(np.linalg.norm(np.asarray(analysis.influence, dtype=float), axis=0))[:, None]
+        rows.append(np.concatenate((cheap, kind_features, geometry_norm), axis=1))
+    features = np.stack(rows)
+    center = features.mean(axis=(0, 1), keepdims=True)
+    scale = features.std(axis=(0, 1), keepdims=True)
+    return (features - center) / np.maximum(scale, 1e-8)
+
+
+def _crossfit_outcome_predictions(groups: Sequence[CandidateGroup], analyses: Sequence[object], sidecar: TrustedSidecar):
+    if len(groups) < 2:
+        raise ValueError("cross-fitted outcome model requires at least two groups")
+    labels = np.stack([
+        sidecar.labels(group.split_group, evaluator_token=sidecar.evaluator_token)
+        for group in groups
+    ])
+    base_ids = [group.base_split_id for group in groups]
+    fold_groups = [
+        (group.problem_id, group.checkpoint_id, group.base_split_id)
+        for group in groups
+    ]
+    n_folds = min(5, len(set(base_ids)))
+    predictions = crossfit_predictions(
+        _crossfit_outcome_inputs(groups, analyses), labels, fold_groups,
+        n_folds=n_folds, maxiter=100,
+    )
+    return predictions.means, predictions.covariances
+
+
 def _clustered_task_means(errors: np.ndarray, base_ids: Sequence[str] | None = None, seed_ids: Sequence[int] | None = None) -> dict[int, dict[str, np.ndarray]]:
     values = np.asarray(errors, dtype=float)
     if values.ndim != 3 or values.shape[0] < 1 or values.shape[1] < 1 or not np.isfinite(values).all():
@@ -132,7 +171,7 @@ def run_frozen_bank(
     groups: Sequence[CandidateGroup], sidecar: TrustedSidecar, backend: PolicyBackend, arms: Sequence[str], *,
     expected_budget: float | Mapping[str, float], inclusion_floor: float, seed: int, event_directory: str | Path,
     design_draws: int = 1, oracle_covariances: Mapping[tuple[str, str], np.ndarray] | None = None,
-    statistics_replicates: int = 1_000,
+    statistics_replicates: int = 1_000, outcome_model: str = "plugin",
 ) -> FrozenRunResult:
     if not groups or design_draws < 1 or statistics_replicates < 1:
         raise ValueError("frozen execution requires groups and positive design_draws")
@@ -150,10 +189,15 @@ def run_frozen_bank(
         raise ValueError("an integer expected budget is required for top_k")
     if "oracle_covariance_goav" in arms and oracle_covariances is None:
         raise ValueError("oracle covariance input is required for oracle_covariance_goav")
+    if outcome_model not in {"plugin", "crossfit"}:
+        raise ValueError("outcome_model must be plugin or crossfit")
     common_hash = bank_hash(groups)
     analyses = [backend.analyze(trainer_view(group)) for group in groups]
-    fitted_means = np.stack([analysis.imputed for analysis in analyses])
-    fitted_covariances = np.stack([analysis.covariance for analysis in analyses])
+    if outcome_model == "crossfit":
+        fitted_means, fitted_covariances = _crossfit_outcome_predictions(groups, analyses, sidecar)
+    else:
+        fitted_means = np.stack([analysis.imputed for analysis in analyses])
+        fitted_covariances = np.stack([analysis.covariance for analysis in analyses])
     directory = Path(event_directory)
     directory.mkdir(parents=True, exist_ok=True)
     # One preregistered stream is replayed through every arm's inverse CDF.
@@ -300,6 +344,7 @@ def run_frozen_bank(
             predicted_risk, predicted_risk_status, mse / max(target_energy, 1e-12), float(np.linalg.norm(bias_vector) / max(bias_standard_error_norm, 1e-12)),
             float(np.mean(cosines)), float(np.mean(ess_values)) if ess_values else 0.0, {**ledger.as_dict(), "cpu_seconds_provenance": "measured_process_time", "ess_provenance": "kish_normalized_within_nonempty_audit"},
         ))
+        log.close()
     by_name = {result.name: result for result in results}
     gates: dict[str, object] = {"support_violations": 0.0}
     if "goav_joint_aipw" in by_name:
