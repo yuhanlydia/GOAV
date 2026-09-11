@@ -1,0 +1,69 @@
+{
+  "arms": {
+    "bayes_voi_aipw": {
+      "bank_hash": "sha256:971af6515727a8fc4ce53716f8db4ceb866db19af24a9e2996757f0f1568ba9f",
+      "design_events": 32800,
+      "draws_per_problem": 200,
+      "outcome_events": 32800,
+      "problem_count": 164,
+      "sha256": "32aa15b2c71c7d9d0ddaa90766406ab6316634e0054a1085cbe9466a7a8b6de5",
+      "unique_design_ids": 32800
+    },
+    "coverage_kill_aipw": {
+      "bank_hash": "sha256:971af6515727a8fc4ce53716f8db4ceb866db19af24a9e2996757f0f1568ba9f",
+      "design_events": 32800,
+      "draws_per_problem": 200,
+      "outcome_events": 32800,
+      "problem_count": 164,
+      "sha256": "0a6e36f2d06cd948d1e819fc9f6d9148d4c06f7472b82ce80aa035746f9693f3",
+      "unique_design_ids": 32800
+    },
+    "entropy_aipw": {
+      "bank_hash": "sha256:971af6515727a8fc4ce53716f8db4ceb866db19af24a9e2996757f0f1568ba9f",
+      "design_events": 32800,
+      "draws_per_problem": 200,
+      "outcome_events": 32800,
+      "problem_count": 164,
+      "sha256": "fe46284269ce9a7802e025650df5b81d42d236e14d5321305377607d3cb20693",
+      "unique_design_ids": 32800
+    },
+    "factorized_neyman_aipw": {
+      "bank_hash": "sha256:971af6515727a8fc4ce53716f8db4ceb866db19af24a9e2996757f0f1568ba9f",
+      "design_events": 32800,
+      "draws_per_problem": 200,
+      "outcome_events": 32800,
+      "problem_count": 164,
+      "sha256": "26a2a7098b2ecbd1f6a1de4b0ec5b70af4a127db2ff59c48487b0f3005e33340",
+      "unique_design_ids": 32800
+    },
+    "goav_joint_aipw": {
+      "bank_hash": "sha256:971af6515727a8fc4ce53716f8db4ceb866db19af24a9e2996757f0f1568ba9f",
+      "design_events": 32800,
+      "draws_per_problem": 200,
+      "outcome_events": 32800,
+      "problem_count": 164,
+      "sha256": "670cdf9bb020474a41bfdf77df1e0c88249c16a638c680f01a893bc1b7a34428",
+      "unique_design_ids": 32800
+    },
+    "uniform_aipw": {
+      "bank_hash": "sha256:971af6515727a8fc4ce53716f8db4ceb866db19af24a9e2996757f0f1568ba9f",
+      "design_events": 32800,
+      "draws_per_problem": 200,
+      "outcome_events": 32800,
+      "problem_count": 164,
+      "sha256": "cea0eddffb942b6b997fa84b3c906a169ffb3079fbd0baf36488a3e95e53ed41",
+      "unique_design_ids": 32800
+    },
+    "uniform_ht": {
+      "bank_hash": "sha256:971af6515727a8fc4ce53716f8db4ceb866db19af24a9e2996757f0f1568ba9f",
+      "design_events": 32800,
+      "draws_per_problem": 200,
+      "outcome_events": 32800,
+      "problem_count": 164,
+      "sha256": "598cccdaa9db59d9a7adc2ce7ded0f7e503ea13a2fb23b5c2d9ed1a8fd7e077e",
+      "unique_design_ids": 32800
+    }
+  },
+  "bank_hash": "sha256:971af6515727a8fc4ce53716f8db4ceb866db19af24a9e2996757f0f1568ba9f",
+  "checks": {}
+}

@@ -1,0 +1,92 @@
+{
+  "arms": [
+    {
+      "design_events": 32800,
+      "ess_fraction": 1.0,
+      "gradient_nmse": 4.758575887031544,
+      "mean_cosine": 0.6196371133070361,
+      "name": "uniform_ht",
+      "outcome_events": 32800,
+      "realized_budget": 0.7934451219512195
+    },
+    {
+      "design_events": 32800,
+      "ess_fraction": 1.0,
+      "gradient_nmse": 0.7721999613906828,
+      "mean_cosine": 0.5298287680624807,
+      "name": "uniform_aipw",
+      "outcome_events": 32800,
+      "realized_budget": 0.7934451219512195
+    },
+    {
+      "design_events": 32800,
+      "ess_fraction": 0.9994554949533976,
+      "gradient_nmse": 0.7361115216001897,
+      "mean_cosine": 0.5298796125844949,
+      "name": "entropy_aipw",
+      "outcome_events": 32800,
+      "realized_budget": 0.7961890243902439
+    },
+    {
+      "design_events": 32800,
+      "ess_fraction": 0.9680115424094049,
+      "gradient_nmse": 0.5973628555826256,
+      "mean_cosine": 0.5294393773553594,
+      "name": "coverage_kill_aipw",
+      "outcome_events": 32800,
+      "realized_budget": 0.7940243902439025
+    },
+    {
+      "design_events": 32800,
+      "ess_fraction": 0.9999999887727885,
+      "gradient_nmse": 0.7686129016304817,
+      "mean_cosine": 0.5298327756277168,
+      "name": "factorized_neyman_aipw",
+      "outcome_events": 32800,
+      "realized_budget": 0.7938109756097561
+    },
+    {
+      "design_events": 32800,
+      "ess_fraction": 0.9999594699443604,
+      "gradient_nmse": 0.7545812168176341,
+      "mean_cosine": 0.5299279515759674,
+      "name": "bayes_voi_aipw",
+      "outcome_events": 32800,
+      "realized_budget": 0.7940548780487805
+    },
+    {
+      "design_events": 32800,
+      "ess_fraction": 0.992048482067251,
+      "gradient_nmse": 0.6711225772701872,
+      "mean_cosine": 0.5345803772480774,
+      "name": "goav_joint_aipw",
+      "outcome_events": 32800,
+      "realized_budget": 0.7989329268292683
+    }
+  ],
+  "bank_hash": "sha256:971af6515727a8fc4ce53716f8db4ceb866db19af24a9e2996757f0f1568ba9f",
+  "config_hash": "sha256:9f290e9949d1429ab56d97a1c81be8a58ab6eff04bd21bf6360b3432f304964b",
+  "evidence_status": "frozen_diagnostics_not_sealed_evidence",
+  "gates": {
+    "ess_gate": true,
+    "holm_adjusted_p_values": {
+      "bayes_voi_aipw": 0.11128887111288871,
+      "coverage_kill_aipw": 0.7499250074992501,
+      "entropy_aipw": 0.06079392060793921,
+      "factorized_neyman_aipw": 0.11128887111288871
+    },
+    "holm_alpha": 0.05,
+    "nmse_comparator_count": 4,
+    "nmse_comparators": [
+      "bayes_voi_aipw",
+      "coverage_kill_aipw",
+      "entropy_aipw",
+      "factorized_neyman_aipw"
+    ],
+    "nmse_gate": false,
+    "nmse_reduction": -0.12347557434856182,
+    "support_violations": 0.0
+  },
+  "outcome_model": "crossfit",
+  "status": "prepared_bank_transformers_frozen_diagnostics"
+}
