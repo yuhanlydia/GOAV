@@ -1,4 +1,5 @@
 import json
+import tracemalloc
 
 import numpy as np
 import pytest
@@ -47,6 +48,73 @@ def test_frozen_runner_uses_hidden_labels_common_banks_and_matched_expected_budg
     goav_events = [event for event in event_log(tmp_path / "goav_joint_aipw.jsonl").read() if type(event).__name__ == "AuditDesignEvent"]
     assert [(event.rng_stream, event.uniform_draw) for event in uniform_events] == [(event.rng_stream, event.uniform_draw) for event in goav_events]
     assert result.gates["nmse_comparator_count"] == 0
+
+
+def test_frozen_runner_streams_high_dimensional_draw_metrics(tmp_path):
+    class WideBackend(DeterministicPolicyBackend):
+        def analyze(self, view):
+            analysis = super().analyze(view)
+            return __import__("dataclasses").replace(
+                analysis, influence=np.tile(analysis.influence, (5_000, 1))
+            )
+
+    groups = _groups()
+    sidecar = TrustedSidecar.create({group.split_group: np.arange(8) % 2 for group in groups})
+    tracemalloc.start()
+    run_frozen_bank(
+        groups, sidecar, WideBackend(feature_dim=4),
+        ["uniform_aipw"], expected_budget=0.8, inclusion_floor=0.05,
+        seed=3, event_directory=tmp_path, design_draws=60,
+    )
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    assert peak < 30_000_000
+
+
+def test_frozen_runner_streams_high_dimensional_cluster_bias_stats(tmp_path):
+    class WideBackend(DeterministicPolicyBackend):
+        shared_influence = None
+
+        def analyze(self, view):
+            analysis = super().analyze(view)
+            if self.shared_influence is None:
+                self.shared_influence = np.tile(analysis.influence, (10_000, 1))
+            return __import__("dataclasses").replace(
+                analysis, influence=self.shared_influence
+            )
+
+    template = _groups()[0]
+    groups = [
+        CandidateGroup(
+            f"cluster-{index}", "checkpoint", tuple(f"c{index}-{candidate}" for candidate in range(8)),
+            template.tests, template.cheap_outcomes,
+        )
+        for index in range(48)
+    ]
+    sidecar = TrustedSidecar.create({group.split_group: np.arange(8) % 2 for group in groups})
+    tracemalloc.start()
+    run_frozen_bank(
+        groups, sidecar, WideBackend(feature_dim=4),
+        ["uniform_aipw"], expected_budget=0.8, inclusion_floor=0.05,
+        seed=3, event_directory=tmp_path, design_draws=2,
+    )
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    assert peak < 15_000_000
+
+
+def test_streamed_cluster_bias_matches_prechange_reference(tmp_path):
+    groups = _groups()
+    sidecar = TrustedSidecar.create({group.split_group: np.arange(8) % 2 for group in groups})
+    result = run_frozen_bank(
+        groups, sidecar, InspectingBackend(), ["uniform_aipw"],
+        expected_budget=0.8, inclusion_floor=0.05, seed=9,
+        event_directory=tmp_path, design_draws=3,
+    )
+    arm = result.arms[0]
+    assert arm.standardized_bias == pytest.approx(0.8866277071256814)
+    assert arm.gradient_nmse == pytest.approx(18.2228736219711)
+    assert arm.mean_cosine == pytest.approx(0.5911561893722879)
 
 
 def test_gate_uses_only_unbiased_adaptive_controls_and_bias_uses_cluster_mc_se(tmp_path):

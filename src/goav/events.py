@@ -75,18 +75,59 @@ class AuditOutcomeEvent:
 class AuditEventLog:
     def __init__(self, path: str | Path):
         self.path = Path(path)
+        self._loaded = False
+        self._design_ids: set[str] = set()
+        self._pending_designs: dict[str, AuditDesignEvent] = {}
+        self._outcomes: set[str] = set()
+        self._counts = (0, 0)
+        self._signature: tuple[int, int] | None = None
+
+    def _file_signature(self) -> tuple[int, int] | None:
+        if not self.path.exists():
+            return None
+        stat = self.path.stat()
+        return stat.st_mtime_ns, stat.st_size
+
+    def _ensure_loaded(self) -> None:
+        current_signature = self._file_signature()
+        if self._loaded and current_signature == self._signature:
+            return
+        self._index(self._read_file())
+        self._signature = current_signature
+
+    def _index(self, events: Sequence[AuditDesignEvent | AuditOutcomeEvent]) -> None:
+        self._design_ids = set()
+        self._pending_designs = {}
+        self._outcomes = set()
+        design_count = outcome_count = 0
+        for event in events:
+            if isinstance(event, AuditDesignEvent):
+                self._design_ids.add(event.design_id)
+                self._pending_designs[event.design_id] = event
+                design_count += 1
+            else:
+                self._outcomes.add(event.design_id)
+                self._pending_designs.pop(event.design_id, None)
+                outcome_count += 1
+        self._counts = design_count, outcome_count
+        self._loaded = True
 
     def _write(self, kind: str, event: AuditDesignEvent | AuditOutcomeEvent) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"event_type": kind, **asdict(event)}
         with self.path.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+        self._signature = self._file_signature()
 
     def append_design(self, event: AuditDesignEvent) -> None:
+        self._ensure_loaded()
         event.validate()
-        if any(isinstance(item, AuditDesignEvent) and item.design_id == event.design_id for item in self.read()):
+        if event.design_id in self._design_ids:
             raise RuntimeError("audit design is immutable")
         self._write("design", event)
+        self._design_ids.add(event.design_id)
+        self._pending_designs[event.design_id] = event
+        self._counts = self._counts[0] + 1, self._counts[1]
 
     @staticmethod
     def _validate_outcome(event: AuditOutcomeEvent, prior: list[AuditDesignEvent | AuditOutcomeEvent]) -> None:
@@ -111,14 +152,34 @@ class AuditEventLog:
             raise ValueError("audit outcomes must be finite")
 
     def append_outcome(self, event: AuditOutcomeEvent) -> None:
-        prior = self.read()
-        self._validate_outcome(event, prior)
+        self._ensure_loaded()
+        design = self._pending_designs.get(event.design_id)
+        if design is None:
+            raise RuntimeError("design must be committed before outcome")
+        if event.design_id in self._outcomes:
+            raise RuntimeError("audit outcome is immutable")
+        self._validate_outcome(event, [design])
         self._write("outcome", event)
+        self._outcomes.add(event.design_id)
+        self._pending_designs.pop(event.design_id)
+        self._counts = self._counts[0], self._counts[1] + 1
 
     def read(self) -> list[AuditDesignEvent | AuditOutcomeEvent]:
+        events = self._read_file()
+        self._index(events)
+        self._signature = self._file_signature()
+        return events
+
+    def counts(self) -> tuple[int, int]:
+        self._ensure_loaded()
+        return self._counts
+
+    def _read_file(self) -> list[AuditDesignEvent | AuditOutcomeEvent]:
         if not self.path.exists():
             return []
         events = []
+        designs: dict[str, AuditDesignEvent] = {}
+        outcomes: set[str] = set()
         for line in self.path.read_text(encoding="utf-8").splitlines():
             payload = json.loads(line)
             kind = payload.pop("event_type")
@@ -128,11 +189,22 @@ class AuditEventLog:
                 payload["pi_ij"] = tuple(tuple(row) for row in payload["pi_ij"])
                 event = AuditDesignEvent(**payload)
                 event.validate()
+                if event.design_id in designs:
+                    raise RuntimeError("audit design is immutable")
+                designs[event.design_id] = event
                 events.append(event)
-            else:
+            elif kind == "outcome":
                 payload["audited"] = tuple(payload["audited"])
                 payload["outcomes"] = tuple(payload["outcomes"])
                 event = AuditOutcomeEvent(**payload)
-                self._validate_outcome(event, events)
+                design = designs.get(event.design_id)
+                if design is None:
+                    raise RuntimeError("design must be committed before outcome")
+                if event.design_id in outcomes:
+                    raise RuntimeError("audit outcome is immutable")
+                self._validate_outcome(event, [design])
+                outcomes.add(event.design_id)
                 events.append(event)
+            else:
+                raise ValueError(f"unknown audit event type: {kind}")
         return events

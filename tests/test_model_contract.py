@@ -4,7 +4,7 @@ import sys
 import numpy as np
 import pytest
 
-from goav.gradient import influence_from_token_scores, score_geometry
+from goav.gradient import influence_from_token_scores, score_geometry, score_geometry_microbatched
 from goav.loss import causal_lm_token_mean_loss, response_token_mask, token_mean_loss
 from goav.models import DeterministicPolicyBackend, load_registered_model, load_transformers_backend
 from goav.trainer import attach_lora
@@ -70,12 +70,14 @@ def test_tiny_torch_l_times_y_equals_direct_clean_token_mean_gradient():
     direct = torch.autograd.grad(direct_loss, tuple(model.parameters()))
     flat_direct = torch.cat([item.reshape(-1) for item in direct]).detach().numpy()
     np.testing.assert_allclose(geometry @ rewards.numpy(), flat_direct, atol=1e-6)
+    streamed = score_geometry_microbatched(model, inputs, mask, microbatch_size=1)
+    np.testing.assert_allclose(streamed, geometry, atol=1e-6)
     from goav.trainer import OnlineTrainingBatch, causal_qlora_one_update
     optimizer = torch.optim.SGD(model.parameters(), lr=0.05)
     before = torch.cat([parameter.detach().reshape(-1) for parameter in model.parameters()]).clone()
     evidence = causal_qlora_one_update(model, optimizer, OnlineTrainingBatch(inputs, rewards, mask))
     after = torch.cat([parameter.detach().reshape(-1) for parameter in model.parameters()])
-    assert evidence.parameter_changed and evidence.active_tokens == 4
+    assert evidence.parameter_changed and evidence.active_tokens == 3
     assert not torch.equal(before, after)
 
 

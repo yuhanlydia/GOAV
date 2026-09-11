@@ -158,6 +158,8 @@ def run_frozen_bank(
     directory.mkdir(parents=True, exist_ok=True)
     # One preregistered stream is replayed through every arm's inverse CDF.
     shared_uniforms = np.random.default_rng(seed).random((len(groups), design_draws))
+    execution_order = sorted(range(len(groups)), key=lambda index: (groups[index].base_split_id, index))
+    ordered_base_ids = [groups[index].base_split_id for index in execution_order]
     # Freeze every training-side selection object before evaluator label access.
     plans: dict[str, list[tuple[object, float | None, str]]] = {}
     for arm in arms:
@@ -178,12 +180,27 @@ def run_frozen_bank(
     for arm in arms:
         log = AuditEventLog(directory / f"{arm}.jsonl")
         rng = np.random.default_rng(seed)
-        estimates, targets, ess_values, audit_counts = [], [], [], []
+        error_energies, target_energies, cosines = [], [], []
+        ess_values, audit_counts = [], []
         ledger = CostLedger()
         actual_expected_budgets = []
-        for group_index, (group, analysis) in enumerate(zip(groups, analyses, strict=True)):
+        cluster_total = len(set(ordered_base_ids))
+        cluster_mean_sum = None
+        cluster_mean_squared_norm_sum = 0.0
+        completed_clusters = 0
+        current_base_id = None
+        current_cluster_error_sum = None
+        current_cluster_error_count = 0
+        track_raw_error_moments = cluster_total == 1
+        raw_error_sum = None
+        raw_error_squared_norm_sum = 0.0
+        raw_error_count = 0
+        for group_index in execution_order:
+            group = groups[group_index]
+            analysis = analyses[group_index]
             design, _, _ = plans[arm][group_index]
             target = None
+            group_error_sum = None
             for draw_index in range(design_draws):
                 started = time.process_time()
                 observation = run_design_audit(
@@ -202,8 +219,20 @@ def run_frozen_bank(
                     estimated_labels[observation.revealed_indices] = observation.revealed_labels
                 else:
                     estimated_labels = aipw_labels(fitted_means[group_index], observation, design.pi_i)
-                estimates.append(clean_gradient(analysis.influence, estimated_labels))
-                targets.append(target)
+                estimate = clean_gradient(analysis.influence, estimated_labels)
+                error = estimate - target
+                error_energies.append(float(error @ error))
+                target_energies.append(float(target @ target))
+                cosines.append(_cosine(estimate, target))
+                if group_error_sum is None:
+                    group_error_sum = np.zeros_like(error)
+                group_error_sum += error
+                if track_raw_error_moments:
+                    if raw_error_sum is None:
+                        raw_error_sum = np.zeros_like(error)
+                    raw_error_sum += error
+                    raw_error_squared_norm_sum += float(error @ error)
+                    raw_error_count += 1
                 weights = np.zeros_like(design.pi_i)
                 weights[observation.revealed_indices] = 1 / design.pi_i[observation.revealed_indices]
                 audit_count = int(observation.audited.sum())
@@ -211,29 +240,65 @@ def run_frozen_bank(
                     ess_values.append(float((weights.sum() ** 2) / (audit_count * (weights @ weights))))
                 audit_counts.append(audit_count)
                 ledger.charge(tokens=analysis.loss_denominator, test_executions=audit_count, cpu_seconds=evaluator_cpu_seconds)
+            assert group_error_sum is not None
+            base_id = group.base_split_id
+            if current_base_id is not None and base_id != current_base_id:
+                assert current_cluster_error_sum is not None and current_cluster_error_count > 0
+                cluster_mean = current_cluster_error_sum / current_cluster_error_count
+                if cluster_mean_sum is None:
+                    cluster_mean_sum = np.zeros_like(cluster_mean)
+                cluster_mean_sum += cluster_mean
+                cluster_mean_squared_norm_sum += float(cluster_mean @ cluster_mean)
+                completed_clusters += 1
+                current_cluster_error_sum = None
+                current_cluster_error_count = 0
+            current_base_id = base_id
+            if current_cluster_error_sum is None:
+                current_cluster_error_sum = np.zeros_like(group_error_sum)
+            current_cluster_error_sum += group_error_sum
+            current_cluster_error_count += design_draws
             actual_expected_budgets.append(design.expected_budget)
-        estimate_array, target_array = np.stack(estimates), np.stack(targets)
-        errors = estimate_array - target_array
-        squared_errors[arm] = np.sum(errors**2, axis=1)
-        base_ids = [group.base_split_id for group in groups]
-        error_energy = np.sum(errors.reshape(len(groups), design_draws, -1) ** 2, axis=2, keepdims=True)
-        target_energy_rows = np.sum(target_array.reshape(len(groups), design_draws, -1) ** 2, axis=2, keepdims=True)
-        target_energy = float(np.mean([value for tasks in _clustered_task_means(target_energy_rows, base_ids).values() for value in tasks.values()]))
-        mse = float(np.mean([value for tasks in _clustered_task_means(error_energy, base_ids).values() for value in tasks.values()]))
-        clustered_errors = errors.reshape(len(groups), design_draws, -1)
-        clustered_task_errors = _clustered_task_means(clustered_errors, base_ids)
-        bias_vector = np.mean([value for tasks in clustered_task_errors.values() for value in tasks.values()], axis=0)
-        bias_standard_error = _clustered_standard_error(clustered_errors, base_ids)
+        assert current_cluster_error_sum is not None and current_cluster_error_count > 0
+        cluster_mean = current_cluster_error_sum / current_cluster_error_count
+        if cluster_mean_sum is None:
+            cluster_mean_sum = np.zeros_like(cluster_mean)
+        cluster_mean_sum += cluster_mean
+        cluster_mean_squared_norm_sum += float(cluster_mean @ cluster_mean)
+        completed_clusters += 1
+        assert completed_clusters == cluster_total
+        squared_errors[arm] = np.asarray(error_energies)
+        error_energy = np.asarray(error_energies).reshape(len(groups), design_draws, 1)
+        target_energy_rows = np.asarray(target_energies).reshape(len(groups), design_draws, 1)
+        target_energy = float(np.mean([value for tasks in _clustered_task_means(target_energy_rows, ordered_base_ids).values() for value in tasks.values()]))
+        mse = float(np.mean([value for tasks in _clustered_task_means(error_energy, ordered_base_ids).values() for value in tasks.values()]))
+        bias_vector = cluster_mean_sum / completed_clusters
+        if completed_clusters > 1:
+            centered_squared_norm = max(
+                cluster_mean_squared_norm_sum - completed_clusters * float(bias_vector @ bias_vector), 0.0
+            )
+            bias_standard_error_norm = np.sqrt(
+                centered_squared_norm / (completed_clusters - 1) / completed_clusters
+            )
+        elif design_draws > 1:
+            assert raw_error_sum is not None and raw_error_count > 1
+            raw_mean = raw_error_sum / raw_error_count
+            raw_variance_norm = max(
+                (raw_error_squared_norm_sum - raw_error_count * float(raw_mean @ raw_mean)) / (raw_error_count - 1),
+                0.0,
+            )
+            bias_standard_error_norm = np.sqrt(raw_variance_norm / design_draws)
+        else:
+            bias_standard_error_norm = 0.0
         risk_values = [item[1] for item in plans[arm]]
         risk_statuses = {item[2] for item in plans[arm]}
         predicted_risk = float(np.mean(risk_values)) if all(value is not None for value in risk_values) else None
         predicted_risk_status = next(iter(risk_statuses)) if len(risk_statuses) == 1 else "partially_unavailable"
-        events = log.read()
+        design_events, outcome_events = log.counts()
         results.append(FrozenArmResult(
             arm, common_hash, float(np.mean(actual_expected_budgets)), float(np.mean(audit_counts)),
-            sum(isinstance(event, AuditDesignEvent) for event in events), sum(isinstance(event, AuditOutcomeEvent) for event in events),
-            predicted_risk, predicted_risk_status, mse / max(target_energy, 1e-12), float(np.linalg.norm(bias_vector) / max(np.linalg.norm(bias_standard_error), 1e-12)),
-            float(np.mean([_cosine(estimate, target) for estimate, target in zip(estimate_array, target_array, strict=True)])), float(np.mean(ess_values)) if ess_values else 0.0, {**ledger.as_dict(), "cpu_seconds_provenance": "measured_process_time", "ess_provenance": "kish_normalized_within_nonempty_audit"},
+            design_events, outcome_events,
+            predicted_risk, predicted_risk_status, mse / max(target_energy, 1e-12), float(np.linalg.norm(bias_vector) / max(bias_standard_error_norm, 1e-12)),
+            float(np.mean(cosines)), float(np.mean(ess_values)) if ess_values else 0.0, {**ledger.as_dict(), "cpu_seconds_provenance": "measured_process_time", "ess_provenance": "kish_normalized_within_nonempty_audit"},
         ))
     by_name = {result.name: result for result in results}
     gates: dict[str, object] = {"support_violations": 0.0}
@@ -243,7 +308,7 @@ def run_frozen_bank(
         if eligible:
             baseline_nmse = min(by_name[name].gradient_nmse for name in eligible)
             reduction = 1 - by_name["goav_joint_aipw"].gradient_nmse / baseline_nmse if baseline_nmse > 0 else 0.0
-            task_ids = [group.base_split_id for group in groups for _ in range(design_draws)]
+            task_ids = [base_id for base_id in ordered_base_ids for _ in range(design_draws)]
             seed_ids = [seed] * len(task_ids)
             raw_p = [paired_hierarchical_randomization_pvalue(squared_errors[name], squared_errors["goav_joint_aipw"], task_ids, seed_ids, n_replicates=statistics_replicates, seed=seed + index) for index, name in enumerate(eligible)]
             adjusted = holm_adjust(raw_p)

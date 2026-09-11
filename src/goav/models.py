@@ -57,6 +57,7 @@ class TransformersPolicyBackend:
     revision: str
     tokenizer: Any
     model: Any
+    max_sequence_length: int = 256
 
     def generate(self, prompts: Sequence[str], **generation_kwargs: Any) -> list[str]:
         encoded = self.tokenizer(list(prompts), return_tensors="pt", padding=True)
@@ -71,21 +72,32 @@ class TransformersPolicyBackend:
         return causal_lm_selected_log_probs(outputs, input_ids)
 
     def analyze(self, view: Any) -> BackendAnalysis:
-        from .gradient import score_geometry
+        from .gradient import score_geometry_microbatched
         from .loss import response_token_mask
         responses = getattr(view, "candidate_texts", None)
         prompt = getattr(view, "prompt", None)
         if not responses or prompt is None:
             raise ValueError("Transformers analysis requires prepared prompt and candidate_texts")
         full_text = [prompt + response for response in responses]
-        encoded = self.tokenizer(full_text, return_tensors="pt", padding=True)
-        prompt_encoded = self.tokenizer([prompt] * len(responses), return_tensors="pt", padding=True)
+        encoded = self.tokenizer(
+            full_text, return_tensors="pt", padding=True, truncation=True,
+            max_length=self.max_sequence_length,
+        )
+        response_encoded = self.tokenizer(
+            list(responses), return_tensors="pt", padding=True, truncation=True,
+            max_length=self.max_sequence_length, add_special_tokens=False,
+        )
         device = next(self.model.parameters()).device
         input_ids = encoded["input_ids"].to(device)
         attention = encoded["attention_mask"].to(device)
-        prompt_lengths = prompt_encoded["attention_mask"].sum(dim=1).to(device)
+        active_lengths = attention.sum(dim=1)
+        response_lengths = response_encoded["attention_mask"].sum(dim=1).to(device)
+        response_lengths = response_lengths.minimum((active_lengths - 1).clamp_min(1))
+        prompt_lengths = active_lengths - response_lengths
         mask = response_token_mask(attention, prompt_lengths)
-        influence = score_geometry(self.model, input_ids, mask, attention)
+        influence = score_geometry_microbatched(
+            self.model, input_ids, mask, attention, microbatch_size=1
+        )
         cheap = np.asarray(view.cheap_outcomes, dtype=float)
         imputed = np.clip(cheap.mean(axis=1), 1e-4, 1 - 1e-4)
         covariance = np.diag(imputed * (1 - imputed))
@@ -114,6 +126,22 @@ def load_transformers_backend(model_id: str, revision: str, *, quantization: str
         )
     tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision, trust_remote_code=False)
     model = AutoModelForCausalLM.from_pretrained(model_id, **kwargs)
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
+    tokenizer.truncation_side = "left"
+    if quantization:
+        try:
+            from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+        except ImportError as exc:
+            raise RuntimeError("PEFT is required to expose frozen-policy score geometry") from exc
+        model = prepare_model_for_kbit_training(model)
+        model = get_peft_model(
+            model,
+            LoraConfig(r=2, lora_alpha=4, target_modules=["q_proj"],
+                       lora_dropout=0.0, bias="none", task_type="CAUSAL_LM"),
+        )
+        model.eval()
     return TransformersPolicyBackend(model_id, revision, tokenizer, model)
 
 

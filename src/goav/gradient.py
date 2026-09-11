@@ -36,3 +36,29 @@ def score_geometry(model, input_ids, response_mask, attention_mask=None) -> np.n
         gradients = torch.autograd.grad(contribution, parameters, retain_graph=True, allow_unused=False)
         columns.append(torch.cat([gradient.reshape(-1) for gradient in gradients]))
     return torch.stack(columns, dim=1).detach().cpu().numpy()
+
+
+def score_geometry_microbatched(
+    model, input_ids, response_mask, attention_mask=None, *, microbatch_size: int = 1
+) -> np.ndarray:
+    """Compute the same globally-normalized geometry with bounded activation memory."""
+    if type(microbatch_size) is not int or microbatch_size <= 0:
+        raise ValueError("microbatch_size must be a positive integer")
+    total = float(response_mask.sum().detach().cpu())
+    if total <= 0:
+        raise ValueError("trainer token mask must contain an active token")
+    columns = []
+    for start in range(0, input_ids.shape[0], microbatch_size):
+        stop = min(start + microbatch_size, input_ids.shape[0])
+        local_mask = response_mask[start:stop]
+        local = float(local_mask.sum().detach().cpu())
+        if local <= 0:
+            raise ValueError("every candidate microbatch must contain an active response token")
+        local_geometry = score_geometry(
+            model,
+            input_ids[start:stop],
+            local_mask,
+            None if attention_mask is None else attention_mask[start:stop],
+        )
+        columns.append(local_geometry * (local / total))
+    return np.concatenate(columns, axis=1)

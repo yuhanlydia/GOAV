@@ -76,6 +76,29 @@ def test_event_log_rejects_mask_inconsistent_with_registered_uniform(tmp_path):
         log.read()
 
 
+def test_event_log_does_not_reread_unchanged_file_for_every_append(tmp_path, monkeypatch):
+    path = tmp_path / "cached-events.jsonl"
+    initial = AuditEventLog(path)
+    initial.append_design(AuditDesignEvent.create("run", "p-0", "ckpt", "d-0", [0.5, 0.5], [0.5], [[0.5]], "seed:0", bank_hash="sha256:" + "a" * 64, group_hash="sha256:" + "b" * 64, candidate_order_hash="sha256:" + "c" * 64, draw_index=0, uniform_draw=0.75))
+
+    read_count = 0
+    original_read_text = type(path).read_text
+
+    def counted_read_text(self, *args, **kwargs):
+        nonlocal read_count
+        read_count += 1
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(path), "read_text", counted_read_text)
+    log = AuditEventLog(path)
+    for index in range(1, 21):
+        log.append_design(AuditDesignEvent.create("run", f"p-{index}", "ckpt", f"d-{index}", [0.5, 0.5], [0.5], [[0.5]], f"seed:{index}", bank_hash="sha256:" + "a" * 64, group_hash="sha256:" + "b" * 64, candidate_order_hash="sha256:" + "c" * 64, draw_index=index, uniform_draw=0.75))
+
+    assert read_count == 1
+    assert len(log.read()) == 21
+    assert read_count == 2
+
+
 def test_three_cost_ledgers_and_deterministic_fake_sandbox():
     ledger = CostLedger()
     sandbox = FakeSandbox(ledger)
